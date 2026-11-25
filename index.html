@@ -9,7 +9,6 @@
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/siren.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -55,7 +54,7 @@
       </div>
 
       <div class="confidence-row">
-        <div><span class="small-label">SIREN CONFIDENCE</span><span class="confidence-value" id="confidence-value">—<small>%</small></span></div>
+        <div><span class="small-label" id="confidence-label">SIREN PATTERN SCORE</span><span class="confidence-value" id="confidence-value">—<small>%</small></span></div>
         <div class="confidence-track" aria-hidden="true"><span id="confidence-bar"></span></div>
         <span class="confidence-caption" id="confidence-caption">Waiting for audio</span>
       </div>
@@ -63,7 +62,8 @@
       <button class="start-button" id="listen-button" type="button" disabled>
         <span class="button-icon" aria-hidden="true">▶</span><span id="listen-button-label">Start listening</span>
       </button>
-      <p class="helper-text" id="model-message">Loading on-device model…</p>
+      <p class="helper-text" id="model-message">Checking for a trained model…</p>
+      <div class="prototype-notice" id="prototype-notice" role="note">Experimental signal-pattern fallback — not a trained siren classifier. This demonstration can miss sirens or alert on other sounds. Never use it to make driving decisions.</div>
       <div class="alert-box" id="alert-box" role="alert" aria-live="assertive" hidden>
         <img src="assets/siren.svg" width="52" height="52" alt="">
         <div><p class="alert-kicker">SOUND ALERT</p><h2>SIREN DETECTED</h2><p>Stay calm. Check your surroundings and follow local road rules.</p></div>
@@ -86,7 +86,7 @@
 
       <section class="demo-card" aria-labelledby="demo-title">
         <p class="eyebrow">TRY IT OUT</p><h2 id="demo-title">Audio demo</h2>
-        <p>Test the inference pipeline with a short audio clip. Choose a WAV or MP3 file from your device.</p>
+        <p>Test local analysis with a short WAV or MP3 clip. A trained model is used when installed; otherwise the experimental tone-sweep fallback runs on this device.</p>
         <label class="upload-button" for="audio-file"><span aria-hidden="true">↑</span> Choose audio file</label>
         <input id="audio-file" type="file" accept="audio/wav,audio/mpeg,audio/mp3,audio/*">
         <p class="helper-text" id="demo-message">Audio is processed locally and is not uploaded.</p>

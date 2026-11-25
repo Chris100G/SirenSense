@@ -35,7 +35,7 @@
 
     <section class="about-section">
       <h2>From street sound to an alert</h2>
-      <p>This is the end-to-end workflow—from labeled examples to a browser-side decision. The pipeline is reproducible with the training script in <code>training/</code>; this repository intentionally ships without trained model weights.</p>
+      <p>This is the end-to-end workflow—from labeled examples to a browser-side decision. The pipeline is reproducible with the training script in <code>training/</code>. No trained weights are bundled: the live app uses a clearly labeled experimental tone-sweep fallback until a real model is trained and installed.</p>
       <div class="workflow" aria-label="Eight-step TinyML workflow">
         <article class="workflow-step"><h3>Dataset</h3><p>UrbanSound8K has 8,732 short urban recordings across ten sound classes. Siren is class 8. The training script creates a binary siren / not-siren task.</p></article>
         <article class="workflow-step"><h3>Preprocess</h3><p>Convert audio to mono 16 kHz, cut or pad to 1 second, calculate 64-band log-mel spectra, then standardize each window.</p></article>
@@ -50,7 +50,7 @@
 
     <section class="about-section">
       <h2>What happens in this browser?</h2>
-      <p>Microphone capture requires a secure context (HTTPS or localhost) and permission. Samples are resampled to 16 kHz, transformed into log-mel frames, normalized, and passed to the model. The frontend stores only user preferences in local storage. Neither the sample buffer nor the uploaded demo clip is transmitted. The live audio graph is stopped when listening stops or the page is left.</p>
+      <p>Microphone capture requires a secure context (HTTPS or localhost) and permission. With trained weights installed, samples are resampled to 16 kHz, transformed into log-mel frames, normalized, and passed to the TensorFlow.js model. Without weights, an experimental local signal-processing fallback looks for a strong tone that sweeps in pitch; this is a heuristic, not machine learning, a siren probability, or a validated detector. The frontend stores only user preferences in local storage. Neither the sample buffer nor uploaded demo clips are transmitted. The live audio graph is stopped when listening stops or the page is left.</p>
       <table class="technical-table">
         <thead><tr><th>Part</th><th>Prototype setting</th><th>Why it matters</th></tr></thead>
         <tbody>

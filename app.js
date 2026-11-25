@@ -9,7 +9,12 @@
   var MEL_BANDS = 64;
   var FRAMES = 64;
   var MODEL_URL = './model/model.json';
+  var TFJS_URL = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js';
+  var SIREN_FFT_SIZE = 1024;
+  var SIREN_FRAME_HOP = 512;
   var model = null;
+  var detectorMode = 'signal';
+  var tensorflowPromise = null;
   var audioContext = null;
   var mediaStream = null;
   var sourceNode = null;
@@ -56,6 +61,15 @@
     confidenceCaption.textContent = caption || 'Siren likelihood';
   }
   function setMessage(message) { modelMessage.textContent = message; }
+  function enableSignalDetector(reason) {
+    model = null;
+    detectorMode = 'signal';
+    setStatus('ready', 'Experimental detector ready');
+    $('confidence-label').textContent = 'SIREN PATTERN SCORE';
+    setMessage(reason || 'Experimental signal-pattern detector ready. This is not a trained ML model and is not for safety decisions.');
+    $('visualizer-caption').textContent = 'Ready for local signal analysis';
+    listenButton.disabled = false;
+  }
   function loadSettings() {
     try {
       var saved = JSON.parse(localStorage.getItem('sirensense-settings') || '{}');
@@ -110,25 +124,43 @@
     });
   }
 
+  function loadTensorFlow() {
+    if (window.tf) return Promise.resolve(window.tf);
+    if (tensorflowPromise) return tensorflowPromise;
+    tensorflowPromise = new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = TFJS_URL;
+      script.onload = function () {
+        if (window.tf) resolve(window.tf);
+        else reject(new Error('TensorFlow.js loaded without initializing.'));
+      };
+      script.onerror = function () { reject(new Error('TensorFlow.js could not be downloaded.')); };
+      document.head.appendChild(script);
+    });
+    return tensorflowPromise;
+  }
   async function loadModel() {
-    if (typeof window.tf === 'undefined') {
-      setStatus('error', 'Inference library unavailable');
-      setMessage('TensorFlow.js could not load. Connect once to load the inference library.');
-      listenButton.disabled = true;
-      return;
-    }
     try {
-      await window.tf.ready();
+      var response = await fetch(MODEL_URL);
+      if (!response.ok) {
+        enableSignalDetector('No trained model is installed. Using the experimental on-device tone-sweep detector instead; it is not ML and is not for safety decisions.');
+        return;
+      }
+      var modelJson = await response.json();
+      if (!modelJson.modelTopology || !Array.isArray(modelJson.weightsManifest)) {
+        throw new Error('The model file is not a valid TensorFlow.js layers model.');
+      }
+      var tf = await loadTensorFlow();
+      await tf.ready();
       model = await window.tf.loadLayersModel(MODEL_URL);
+      detectorMode = 'model';
+      $('confidence-label').textContent = 'SIREN CONFIDENCE';
       setStatus('ready', 'Model ready');
       setMessage('On-device model loaded. Start listening to begin.');
       listenButton.disabled = false;
     } catch (error) {
-      console.warn('SirenSense model is not installed.', error);
-      setStatus('error', 'Model not installed');
-      setMessage('No trained model found. Follow README.md to train and install one; listening is disabled until then.');
-      listenButton.disabled = true;
-      $('visualizer-caption').textContent = 'Model required for detection';
+      console.warn('SirenSense could not load the trained model; using its signal-analysis fallback.', error);
+      enableSignalDetector('The trained model could not be loaded. Using the experimental on-device tone-sweep detector; it is not ML and is not for safety decisions.');
     }
   }
 
@@ -188,15 +220,16 @@
     return points.map(function (hz) { return Math.floor((FFT_SIZE + 1) * hz / SAMPLE_RATE); });
   }
   var melFilters = createMelFilters();
-  function fftPower(frame) {
-    var real = new Float32Array(FFT_SIZE), imag = new Float32Array(FFT_SIZE);
-    for (var i = 0; i < FFT_SIZE; i++) {
+  function fftPower(frame, transformSize) {
+    var size = transformSize || FFT_SIZE;
+    var real = new Float32Array(size), imag = new Float32Array(size);
+    for (var i = 0; i < size; i++) {
       var sample = frame[i] || 0;
-      real[i] = sample * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (FFT_SIZE - 1)));
+      real[i] = sample * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (size - 1)));
     }
     // In-place radix-2 Cooley-Tukey FFT with bit-reversed input ordering.
-    for (var i = 1, j = 0; i < FFT_SIZE; i++) {
-      var bit = FFT_SIZE >> 1;
+    for (var i = 1, j = 0; i < size; i++) {
+      var bit = size >> 1;
       for (; j & bit; bit >>= 1) j ^= bit;
       j ^= bit;
       if (i < j) {
@@ -204,9 +237,9 @@
         var tempImag = imag[i]; imag[i] = imag[j]; imag[j] = tempImag;
       }
     }
-    for (var size = 2; size <= FFT_SIZE; size <<= 1) {
-      var half = size >> 1, angleStep = -2 * Math.PI / size;
-      for (var base = 0; base < FFT_SIZE; base += size) {
+    for (var stageSize = 2; stageSize <= size; stageSize <<= 1) {
+      var half = stageSize >> 1, angleStep = -2 * Math.PI / stageSize;
+      for (var base = 0; base < size; base += stageSize) {
         for (var offset = 0; offset < half; offset++) {
           var angle = angleStep * offset, evenIndex = base + offset, oddIndex = evenIndex + half;
           var oddReal = real[oddIndex] * Math.cos(angle) - imag[oddIndex] * Math.sin(angle);
@@ -218,8 +251,8 @@
         }
       }
     }
-    var power = new Float32Array(FFT_SIZE / 2 + 1);
-    for (var b = 0; b < power.length; b++) power[b] = (real[b] * real[b] + imag[b] * imag[b]) / FFT_SIZE;
+    var power = new Float32Array(size / 2 + 1);
+    for (var b = 0; b < power.length; b++) power[b] = (real[b] * real[b] + imag[b] * imag[b]) / size;
     return power;
   }
   function extractMel(samples) {
@@ -251,18 +284,68 @@
     return raw;
   }
 
+  function analyzeSirenPattern(samples) {
+    if (samples.length < SAMPLE_RATE / 2) return 0;
+    var window = new Float32Array(SIREN_FFT_SIZE);
+    var minBin = Math.ceil(400 * SIREN_FFT_SIZE / SAMPLE_RATE);
+    var maxBin = Math.floor(1800 * SIREN_FFT_SIZE / SAMPLE_RATE);
+    var frequencies = [], tonalities = [];
+    for (var start = 0; start + SIREN_FFT_SIZE <= samples.length; start += SIREN_FRAME_HOP) {
+      for (var i = 0; i < SIREN_FFT_SIZE; i++) window[i] = samples[start + i];
+      var power = fftPower(window, SIREN_FFT_SIZE);
+      var totalEnergy = 0, peakBin = minBin, peakEnergy = 0;
+      for (var bin = minBin; bin <= maxBin; bin++) {
+        totalEnergy += power[bin];
+        if (power[bin] > peakEnergy) { peakEnergy = power[bin]; peakBin = bin; }
+      }
+      if (totalEnergy < 1e-9) continue;
+      var localEnergy = power[peakBin];
+      if (peakBin > minBin) localEnergy += power[peakBin - 1];
+      if (peakBin < maxBin) localEnergy += power[peakBin + 1];
+      frequencies.push(peakBin * SAMPLE_RATE / SIREN_FFT_SIZE);
+      tonalities.push(localEnergy / totalEnergy);
+    }
+    if (frequencies.length < 6) return 0;
+
+    var toneAverage = tonalities.reduce(function (sum, value) { return sum + value; }, 0) / tonalities.length;
+    var minFrequency = Math.min.apply(null, frequencies);
+    var maxFrequency = Math.max.apply(null, frequencies);
+    var pitchSpan = maxFrequency - minFrequency;
+    var direction = 0, travel = 0, reversals = 0;
+    for (var frame = 1; frame < frequencies.length; frame++) {
+      var change = frequencies[frame] - frequencies[frame - 1];
+      if (Math.abs(change) < 24) continue;
+      var nextDirection = change > 0 ? 1 : -1;
+      if (direction && nextDirection !== direction && travel >= 55) reversals++;
+      if (nextDirection !== direction) travel = 0;
+      direction = nextDirection;
+      travel += Math.abs(change);
+    }
+    var toneScore = Math.max(0, Math.min(1, (toneAverage - 0.10) / 0.55));
+    var sweepScore = Math.max(0, Math.min(1, (pitchSpan - 90) / 360));
+    var reversalScore = Math.min(1, reversals / 2);
+    return toneScore * 0.35 + sweepScore * 0.45 + reversalScore * 0.20;
+  }
+
   async function infer(samples) {
-    if (!model || inferenceBusy || !active) return;
+    if (inferenceBusy || !active) return;
     inferenceBusy = true;
     try {
-      var features = extractMel(samples);
-      var input = window.tf.tensor4d(features, [1, FRAMES, MEL_BANDS, 1]);
-      var output = model.predict(input);
-      var values = await output.data();
-      input.dispose(); output.dispose();
-      // Training exports [non-siren, siren] softmax probabilities in that order.
-      var score = values.length > 1 ? values[1] : values[0];
-      setConfidence(score, score >= settings.threshold ? 'Possible siren' : 'Below alert threshold');
+      var score;
+      if (model) {
+        var features = extractMel(samples);
+        var input = window.tf.tensor4d(features, [1, FRAMES, MEL_BANDS, 1]);
+        var output = model.predict(input);
+        var values = await output.data();
+        input.dispose(); output.dispose();
+        // Training exports [non-siren, siren] softmax probabilities in that order.
+        score = values.length > 1 ? values[1] : values[0];
+      } else {
+        score = analyzeSirenPattern(samples);
+      }
+      setConfidence(score, detectorMode === 'model'
+        ? (score >= settings.threshold ? 'Possible siren' : 'Below alert threshold')
+        : (score >= settings.threshold ? 'Siren-like sweep' : 'No clear sweep'));
       if (score >= settings.threshold) {
         positiveWindows++;
         if (positiveWindows >= 2) triggerAlert();
@@ -272,9 +355,9 @@
       }
     } catch (error) {
       console.error('On-device inference failed.', error);
-      setStatus('error', 'Inference error');
-      setMessage('Inference stopped because the model returned an error. Stop and reload the page to try again.');
       stopListening();
+      setStatus('error', 'Inference error');
+      setMessage('On-device audio analysis stopped after an error. Reload the page to try again.');
     } finally {
       inferenceBusy = false;
     }
@@ -297,7 +380,7 @@
   }
 
   async function startListening() {
-    if (!model) return;
+    if (detectorMode !== 'model' && detectorMode !== 'signal') return;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus('error', 'Microphone unavailable');
       setMessage('This browser does not support microphone access. Try a current browser over HTTPS.');
@@ -333,7 +416,9 @@
       $('listen-button-label').textContent = 'Stop listening';
       $('visualizer-caption').textContent = 'Listening for nearby sirens';
       setStatus('listening', 'Listening');
-      setMessage('Audio is analyzed locally. Keep this page open while monitoring.');
+      setMessage(model
+        ? 'Audio is analyzed locally by the trained model. Keep this page open while monitoring.'
+        : 'Experimental tone-sweep analysis is running locally (not a trained ML model). Keep this page open; do not rely on it for driving.');
       stopVisualizer();
       drawVisualizer();
     } catch (error) {
@@ -360,12 +445,12 @@
     audioBuffer = new Float32Array(0);
     visualData = new Uint8Array(0);
     if (listenButton) {
-      listenButton.disabled = !model;
+      listenButton.disabled = false;
       listenButton.classList.remove('is-stop');
       $('listen-button-label').textContent = 'Start listening';
     }
-    if (statusPill && statusPill.classList.contains('is-listening')) setStatus(model ? 'ready' : 'error', model ? 'Model ready' : 'Model not installed');
-    if ($('visualizer-caption')) $('visualizer-caption').textContent = model ? 'Ready when you are' : 'Model required for detection';
+    if (statusPill && statusPill.classList.contains('is-listening')) setStatus('ready', model ? 'Model ready' : 'Experimental detector ready');
+    if ($('visualizer-caption')) $('visualizer-caption').textContent = model ? 'Ready when you are' : 'Ready for local signal analysis';
     if (model) setMessage('On-device model loaded. Start listening to begin.');
   }
 
@@ -388,22 +473,28 @@
     if (alertBox) alertBox.hidden = true;
     if (navigator.vibrate) navigator.vibrate(0);
     document.body.classList.toggle('high-intensity', settings.intensity);
-    if (active) setStatus('listening', 'Listening');
+    if (active) {
+      setStatus('listening', 'Listening');
+    } else {
+      setStatus('ready', detectorMode === 'model' ? 'Model ready' : 'Experimental detector ready');
+      $('visualizer-caption').textContent = 'Ready when you are';
+    }
   }
 
   async function processDemoFile(file) {
     if (!file) return;
-    if (!model) {
-      $('demo-message').textContent = 'Demo inference needs a trained model. Follow README.md to add it; no audio has been sent anywhere.';
-      return;
-    }
     if (!file.type.startsWith('audio/')) {
       $('demo-message').textContent = 'Please choose an audio file (WAV or MP3).';
       return;
     }
-    $('demo-message').textContent = 'Decoding and analyzing audio locally…';
+    $('demo-message').textContent = model
+      ? 'Decoding and analyzing audio locally with the trained model…'
+      : 'Analyzing local audio with the experimental tone-sweep detector (not ML)…';
+    var context = null;
     try {
-      var context = new (window.AudioContext || window.webkitAudioContext)();
+      var AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) throw new Error('Audio decoding is not supported in this browser.');
+      context = new AudioContextClass();
       var decoded = await context.decodeAudioData(await file.arrayBuffer());
       var mono = new Float32Array(decoded.length);
       for (var ch = 0; ch < decoded.numberOfChannels; ch++) {
@@ -416,20 +507,32 @@
         var segment = samples.slice(start, Math.min(start + WINDOW_SAMPLES, samples.length));
         if (segment.length < WINDOW_SAMPLES / 2) continue;
         var padded = new Float32Array(WINDOW_SAMPLES); padded.set(segment);
-        var input = window.tf.tensor4d(extractMel(padded), [1, FRAMES, MEL_BANDS, 1]);
-        var output = model.predict(input);
-        var values = await output.data();
-        input.dispose(); output.dispose();
-        score = Math.max(score === null ? 0 : score, values.length > 1 ? values[1] : values[0]);
+        var segmentScore;
+        if (model) {
+          var input = window.tf.tensor4d(extractMel(padded), [1, FRAMES, MEL_BANDS, 1]);
+          var output = model.predict(input);
+          var values = await output.data();
+          input.dispose(); output.dispose();
+          segmentScore = values.length > 1 ? values[1] : values[0];
+        } else {
+          segmentScore = analyzeSirenPattern(padded);
+        }
+        score = Math.max(score === null ? 0 : score, segmentScore);
       }
       if (score === null) throw new Error('The audio is too short to analyze. Choose a clip at least half a second long.');
-      setConfidence(score, score >= settings.threshold ? 'Possible siren in clip' : 'Below alert threshold');
+      setConfidence(score, detectorMode === 'model'
+        ? (score >= settings.threshold ? 'Possible siren in clip' : 'Below alert threshold')
+        : (score >= settings.threshold ? 'Siren-like sweep in clip' : 'No clear sweep in clip'));
       if (score >= settings.threshold) { positiveWindows = 2; triggerAlert(); }
-      $('demo-message').textContent = 'Analysis complete on this device. Results are experimental; verify the sound yourself.';
-      await context.close();
+      else if (alertActive && score < settings.threshold * 0.7) clearAlert();
+      $('demo-message').textContent = 'Local analysis complete. ' + (model
+        ? 'Model predictions are experimental; verify the sound yourself.'
+        : 'This pattern score is not a siren probability or trained classifier. Verify the sound yourself.');
     } catch (error) {
       console.error('Audio demo could not be analyzed.', error);
       $('demo-message').textContent = error.message || 'The file could not be decoded. Try a WAV or MP3 file.';
+    } finally {
+      if (context) await context.close().catch(function (error) { console.warn('Demo audio context close failed.', error); });
     }
   }
 

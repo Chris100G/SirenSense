@@ -15,7 +15,7 @@ Microphone access requires HTTPS or localhost. From the project root, start any 
 python -m http.server 8000
 ```
 
-Open `http://localhost:8000`. Allow microphone permission to test the detector after installing a trained model. The PWA service worker is available on localhost and HTTPS. A static HTTPS host is required for installation and microphone access on deployed sites.
+Open `http://localhost:8000` and allow microphone permission. Listening and local audio-file analysis work immediately using an experimental tone-sweep signal-processing fallback. This fallback is not a trained classifier and is not reliable for driving. To use the intended TensorFlow.js ML pipeline, train and install model weights as described below. The PWA service worker is available on localhost and HTTPS. A static HTTPS host is required for installation and microphone access on deployed sites.
 
 ## Train and install a model
 
@@ -39,11 +39,11 @@ The architecture is a small two-block CNN. Training uses UrbanSound8K folds 1–
 
 The converter quantizes model weights; browser features and activations remain floating point. The target model size is below 2–5 MB but depends on converter output; inspect generated artifacts. Quantization alone is not evidence that the model is accurate or safe. Review precision, recall, false alarms, class balance, and performance on siren recordings not represented by this dataset before drawing conclusions. Training on UrbanSound8K does not establish real-world driving performance.
 
-Without a trained `model.json`, the app keeps detection and audio demo inference disabled. It does not substitute a heuristic for a real classifier. The interface still explains the missing model and gives setup guidance.
+Without a trained `model.json`, the app runs an experimental tone-sweep signal-processing fallback so the microphone and audio-demo flows can be exercised without model setup. It is not a trained siren classifier, may miss sirens or trigger on other tonal sounds, and its displayed pattern score is not a probability. It must not be used for driving decisions. The UI clearly identifies this fallback; an installed trained model takes precedence and uses TensorFlow.js, loaded only when needed.
 
 ## PWA and deployment
 
-Deploy the project folder as static files on GitHub Pages, Netlify, or another HTTPS static host. Preserve relative paths, including `model/` and `assets/`. There is no build step. The service worker caches the app shell and TensorFlow.js when available; the trained model and its weights are cached as they are requested. After the first successful online load, the shell can reopen offline; actual offline inference additionally requires the model and TensorFlow.js to have been cached successfully.
+Deploy the project folder as static files on GitHub Pages, Netlify, or another HTTPS static host. Preserve relative paths, including `model/` and `assets/`. There is no build step. The service worker caches the app shell; trained model files are cached as requested. The no-model signal-analysis fallback works offline after the shell has been cached. Trained-model inference also requires TensorFlow.js and its weights to have been cached successfully.
 
 This repository is configured to publish through [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) on every push to `main`. For a new repository, set its Pages source to **GitHub Actions**. The first deployment may take a few minutes. For Netlify, publish the project root with no build command. Verify microphone permission, install prompt, offline behavior, and model download on the deployed HTTPS origin.
 
