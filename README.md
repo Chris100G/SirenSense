@@ -2,6 +2,9 @@
 
 SirenSense is a mobile-first, installable PWA demonstrating how TinyML could turn nearby siren sounds into visual and haptic awareness for deaf and hard-of-hearing drivers. Audio feature extraction and inference are designed to stay in the browser; this static app has no audio-upload service.
 
+**Live demo:** [chris100g.github.io/SirenSense](https://chris100g.github.io/SirenSense/)  
+**Source repository:** [github.com/Chris100G/SirenSense](https://github.com/Chris100G/SirenSense)
+
 > **Safety notice:** This is an educational prototype, not a certified driver-assistance or emergency-warning system. It may miss sirens or produce false alerts. Never rely on it instead of mirrors, safe driving practices, or local road rules. Do not interact with a phone while driving.
 
 ## Run locally
@@ -42,7 +45,7 @@ Without a trained `model.json`, the app keeps detection and audio demo inference
 
 Deploy the project folder as static files on GitHub Pages, Netlify, or another HTTPS static host. Preserve relative paths, including `model/` and `assets/`. There is no build step. The service worker caches the app shell and TensorFlow.js when available; the trained model and its weights are cached as they are requested. After the first successful online load, the shell can reopen offline; actual offline inference additionally requires the model and TensorFlow.js to have been cached successfully.
 
-To publish to GitHub Pages, push the project to a repository and enable Pages for the chosen branch/folder. For Netlify, publish the project root with no build command. Verify microphone permission, install prompt, offline behavior, and model download on the deployed HTTPS origin.
+This repository is configured to publish through [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) on every push to `main`. For a new repository, set its Pages source to **GitHub Actions**. The first deployment may take a few minutes. For Netlify, publish the project root with no build command. Verify microphone permission, install prompt, offline behavior, and model download on the deployed HTTPS origin.
 
 ## Browser implementation
 
