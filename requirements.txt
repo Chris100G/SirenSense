@@ -1,0 +1,4 @@
+librosa>=0.10.2,<1.0
+numpy>=1.26,<2.0
+tensorflow>=2.15,<2.16
+tensorflowjs>=4.22,<5.0

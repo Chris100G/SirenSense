@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101416">
+  <meta name="description" content="Learn how SirenSense applies TinyML to accessible, on-device sound awareness.">
+  <title>How SirenSense works — TinyML for accessibility</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/siren.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="SirenSense home"><img src="assets/siren.svg" width="38" height="38" alt=""><span>Siren<span class="brand-accent">Sense</span><small>ACCESSIBILITY, ON DEVICE</small></span></a>
+    <nav aria-label="Main navigation"><a class="nav-link" href="index.html">Detector</a><a class="nav-link active" href="about.html" aria-current="page">How it works</a><button class="icon-button" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">☼</button></nav>
+  </header>
+  <main class="about-shell">
+    <section class="about-hero">
+      <p class="eyebrow">SMALL MODELS. REAL-WORLD POSSIBILITY.</p>
+      <h1>Making machine learning <span class="muted-heading">more human.</span></h1>
+      <p class="lead">SirenSense is an educational TinyML prototype exploring how a phone can recognize an emergency siren locally and translate sound into clear visual and haptic cues.</p>
+    </section>
+
+    <section class="about-section">
+      <h2>So, what is TinyML?</h2>
+      <p>TinyML means running machine-learning models on resource-constrained devices: phones, microcontrollers, and other edge hardware. Instead of sending every input to a remote server, a compact model makes a prediction where the data was captured. Thoughtful model design, compression, and efficient computation help keep storage, memory, energy use, and response time modest.</p>
+      <div class="info-grid">
+        <article class="info-card"><span class="card-icon" aria-hidden="true">◉</span><h3>Private by design</h3><p>Audio features are calculated in the browser and predictions stay on the device. This prototype does not upload microphone recordings.</p></article>
+        <article class="info-card"><span class="card-icon" aria-hidden="true">⌁</span><h3>Fast, local response</h3><p>No round-trip to a cloud service is needed for inference, so a trained model can respond with low latency and without network access.</p></article>
+        <article class="info-card"><span class="card-icon" aria-hidden="true">▣</span><h3>Designed to be small</h3><p>A compact CNN and quantized model weights target a few megabytes, making browser delivery and on-device execution practical.</p></article>
+      </div>
+    </section>
+
+    <section class="about-section">
+      <h2>From street sound to an alert</h2>
+      <p>This is the end-to-end workflow—from labeled examples to a browser-side decision. The pipeline is reproducible with the training script in <code>training/</code>; this repository intentionally ships without trained model weights.</p>
+      <div class="workflow" aria-label="Eight-step TinyML workflow">
+        <article class="workflow-step"><h3>Dataset</h3><p>UrbanSound8K has 8,732 short urban recordings across ten sound classes. Siren is class 8. The training script creates a binary siren / not-siren task.</p></article>
+        <article class="workflow-step"><h3>Preprocess</h3><p>Convert audio to mono 16 kHz, cut or pad to 1 second, calculate 64-band log-mel spectra, then standardize each window.</p></article>
+        <article class="workflow-step"><h3>Train a small CNN</h3><p>Two lightweight convolution blocks and global pooling learn patterns in time and frequency. Validation data is held out by source fold.</p></article>
+        <article class="workflow-step"><h3>Evaluate</h3><p>Check recall, precision, and false alarms on held-out clips. Thresholds should be calibrated on representative real-world recordings.</p></article>
+        <article class="workflow-step"><h3>Optimize</h3><p>Export with 8-bit quantized weights to reduce download size. Pruning can be explored, but needs fine-tuning and a compatible conversion path.</p></article>
+        <article class="workflow-step"><h3>Convert</h3><p>TensorFlow.js converter packages the Keras model for browser execution. The web app expects a softmax output ordered [not siren, siren].</p></article>
+        <article class="workflow-step"><h3>Run on device</h3><p>The Web Audio API captures overlapping 1-second windows at 0.5-second intervals. Local JS mel features feed the model in TensorFlow.js.</p></article>
+        <article class="workflow-step"><h3>Alert accessibly</h3><p>Two consecutive above-threshold predictions trigger a prominent banner and optional vibration. The alert clears when confidence falls.</p></article>
+      </div>
+    </section>
+
+    <section class="about-section">
+      <h2>What happens in this browser?</h2>
+      <p>Microphone capture requires a secure context (HTTPS or localhost) and permission. Samples are resampled to 16 kHz, transformed into log-mel frames, normalized, and passed to the model. The frontend stores only user preferences in local storage. Neither the sample buffer nor the uploaded demo clip is transmitted. The live audio graph is stopped when listening stops or the page is left.</p>
+      <table class="technical-table">
+        <thead><tr><th>Part</th><th>Prototype setting</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td>Audio window</td><td>1 second, 0.5-second step</td><td>Overlapping windows offer frequent updates while preserving enough sound context for classification.</td></tr>
+          <tr><td>Features</td><td>64 mel bands × 64 frames, mono 16 kHz</td><td>A compact time-frequency representation is a common audio-classification input; training and browser normalization must match.</td></tr>
+          <tr><td>Model</td><td>Two small Conv2D blocks, global average pooling, 2-way softmax</td><td>Small architecture limits computation; the actual model must be trained and evaluated for intended conditions.</td></tr>
+          <tr><td>Model size goal</td><td>Below 2–5 MB (quantized weights)</td><td>Achieved size depends on conversion, architecture, and model metadata; measure the produced artifacts before deployment.</td></tr>
+          <tr><td>Latency goal</td><td>Window + inference, typically under a few seconds on a capable phone</td><td>Browser, device, model, and noisy environment all affect end-to-end response. This is a target, not a guarantee.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="about-section">
+      <h2>Accessibility, impact & limitations</h2>
+      <p>Deaf and hard-of-hearing people should not have to rely on hearing to notice important surroundings. Making a sound class visible and tangible could support more inclusive mobility, aligning with UN Sustainable Development Goal 10: Reduced Inequalities. Co-design with deaf drivers and accessibility specialists is essential; a prototype is not a substitute for lived experience or professional safety evaluation.</p>
+      <p class="caution"><strong>Safety first.</strong> SirenSense is a learning demonstration, not a certified driver-assistance or emergency-warning system. It can miss sirens or produce false alerts, especially with traffic, music, blocked microphones, device placement, or different siren styles. Never use it to decide whether to yield, replace mirrors, or override local road rules. Keep attention on driving and stop safely before interacting with the phone.</p>
+    </section>
+    <footer class="footer about-footer"><span>Privacy-conscious by architecture. Experimental by nature.</span><a href="index.html">Back to detector <span aria-hidden="true">→</span></a></footer>
+  </main>
+</body>
+</html>

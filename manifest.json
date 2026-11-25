@@ -1,0 +1,14 @@
+{
+  "name": "SirenSense — On-device sound awareness",
+  "short_name": "SirenSense",
+  "description": "An accessibility-focused, on-device siren detection demonstration.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#101416",
+  "theme_color": "#101416",
+  "icons": [
+    { "src": "assets/siren.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
